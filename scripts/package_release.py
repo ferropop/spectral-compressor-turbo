@@ -14,6 +14,11 @@ for extension in ('vst3','clap','app','exe'):
         else: shutil.copy2(path,out/path.name)
 for filename in ('README.md','COPYING','LICENSE','THIRD-PARTY.md'):
     if (root/filename).exists(): shutil.copy2(root/filename,out/filename)
+licenses=out/'Licenses'
+licenses.mkdir(exist_ok=True)
+for src,name in [('plugins/spectral_compressor/src/editor/fonts/LICENSE','Noto-Sans-OFL.txt'),('vendor/vizia/LICENSE','Vizia-MIT.txt')]:
+    shutil.copy2(root/src,licenses/name)
+if (root/'VALIDATION.md').exists(): shutil.copy2(root/'VALIDATION.md',out/'VALIDATION.md')
 validation=root/'validation'
 if validation.exists(): shutil.copytree(validation,out/'Validation',dirs_exist_ok=True)
 info={'name':'Spectral Compressor Turbo','version':version,'platform':platform,'authors':['Robbert van der Helm','ferropop'],'source':'https://github.com/ferropop/spectral-compressor-turbo','commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()}

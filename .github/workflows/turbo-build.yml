@@ -53,7 +53,7 @@ jobs:
         run: |
           curl -fL https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip -o pluginval.zip
           unzip -q pluginval.zip -d validator
-          validator/pluginval.app/Contents/MacOS/pluginval --validate 'target/bundled/Spectral Compressor Turbo.vst3' --strictness-level 5 --random-seed 42 > validation/pluginval.txt 2>&1
+          validator/pluginval.app/Contents/MacOS/pluginval --validate 'target/bundled/Spectral Compressor Turbo.vst3' --strictness-level 5 --random-seed 42 --skip-gui-tests > validation/pluginval.txt 2>&1
           cat validation/pluginval.txt
           grep -q 'SUCCESS' validation/pluginval.txt
       - name: Validate native Windows VST3
@@ -63,7 +63,7 @@ jobs:
           Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive pluginval.zip validator
           $validator = (Get-ChildItem validator -Recurse -Filter pluginval.exe | Select-Object -First 1).FullName
-          $process = Start-Process -FilePath $validator -ArgumentList '--validate "target/bundled/Spectral Compressor Turbo.vst3" --strictness-level 5 --random-seed 42' -Wait -PassThru -RedirectStandardOutput validation/pluginval.txt -RedirectStandardError validation/pluginval-stderr.txt
+          $process = Start-Process -FilePath $validator -ArgumentList '--validate "target/bundled/Spectral Compressor Turbo.vst3" --strictness-level 5 --random-seed 42 --skip-gui-tests' -Wait -PassThru -RedirectStandardOutput validation/pluginval.txt -RedirectStandardError validation/pluginval-stderr.txt
           Get-Content validation/pluginval.txt
           if ($process.ExitCode -ne 0) { throw "pluginval failed ($($process.ExitCode))" }
           if (-not (Select-String -Path validation/pluginval.txt -Pattern 'SUCCESS' -Quiet)) { throw 'Missing pluginval success result' }

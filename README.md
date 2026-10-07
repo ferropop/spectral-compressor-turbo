@@ -63,7 +63,9 @@ are completed delivery packages in the local Codex project.
 ## Verification and known limits
 
 Release archives include build/test evidence under Validation. Native pluginval
-checks cover processing, automation, saved state, and editor construction;
+checks cover processing, automation, and saved state. CI skips GUI tests because
+hosted runners lack a usable OpenGL context; full editor construction is checked
+on the local Mac.
 platform runner tests do not establish physical DAW mouse interaction.
 The original inherited mono processing issue remains: use stereo instances.
 This visual/branding release retains the Custom edition's audio processing.
