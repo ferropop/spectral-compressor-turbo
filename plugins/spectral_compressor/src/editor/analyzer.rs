@@ -99,6 +99,13 @@ impl View for Analyzer {
     }
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
+        // Custom drawing bypasses Vizia's default background/border painter.
+        let outer = cx.bounds();
+        let mut frame = vg::Path::new();
+        frame.rect(outer.x, outer.y, outer.w, outer.h);
+        canvas.fill_path(&frame, &vg::Paint::color(vg::Color::rgb(18, 23, 29)));
+        canvas.stroke_path(&frame, &vg::Paint::color(vg::Color::rgb(105, 121, 141))
+            .with_line_width(cx.scale_factor()));
         let bounds = plot_bounds(cx.bounds(),cx.scale_factor());
         if bounds.w == 0.0 || bounds.h == 0.0 {
             return;
