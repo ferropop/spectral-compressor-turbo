@@ -47,6 +47,10 @@ const ENVELOPE_FOLLOWER_TIMING_FADE_MS: f32 = 150.0;
 /// will have a capacity of `MAX_WINDOW_SIZE / 2 + 1` and a size that matches the current complex
 /// FFT buffer size. This is stored as a struct of arrays to make SIMD-ing easier in the future.
 pub struct CompressorBank {
+    pub should_update_response: Arc<AtomicBool>,
+    response_targets: Vec<f32>,
+    response_weights: Vec<f32>,
+
     /// If set, then the downwards thresholds should be updated on the next processing cycle. Can be
     /// set from a parameter value change listener, and is also set when calling `.reset_for_size`.
     pub should_update_downwards_thresholds: Arc<AtomicBool>,
@@ -434,6 +438,9 @@ impl CompressorBank {
         let complex_buffer_len = max_window_size / 2 + 1;
 
         CompressorBank {
+            should_update_response: Arc::new(AtomicBool::new(true)),
+            response_targets: Vec::with_capacity(complex_buffer_len),
+            response_weights: Vec::with_capacity(complex_buffer_len),
             should_update_downwards_thresholds: Arc::new(AtomicBool::new(true)),
             should_update_upwards_thresholds: Arc::new(AtomicBool::new(true)),
             should_update_downwards_ratios: Arc::new(AtomicBool::new(true)),
@@ -474,6 +481,8 @@ impl CompressorBank {
         self.ln_freqs
             .reserve_exact(complex_buffer_len.saturating_sub(self.ln_freqs.len()));
 
+        self.response_targets.reserve_exact(complex_buffer_len.saturating_sub(self.response_targets.len()));
+        self.response_weights.reserve_exact(complex_buffer_len.saturating_sub(self.response_weights.len()));
         self.downwards_thresholds_db
             .reserve_exact(complex_buffer_len.saturating_sub(self.downwards_thresholds_db.len()));
         self.downwards_ratios
@@ -524,6 +533,10 @@ impl CompressorBank {
             *ln_freq = freq.ln();
         }
 
+        self.response_targets.resize(complex_buffer_len,1.0);
+        self.response_weights.resize(complex_buffer_len,1.0);
+        self.response_targets.fill(1.0); self.response_weights.fill(1.0);
+        self.should_update_response.store(true,Ordering::Release);
         self.downwards_thresholds_db.resize(complex_buffer_len, 1.0);
         self.downwards_ratios.resize(complex_buffer_len, 1.0);
         self.downwards_knee_parabola_scale
@@ -607,6 +620,19 @@ impl CompressorBank {
         }
 
         self.update_if_needed(params);
+        if channel_idx==0 {
+            if self.should_update_response.swap(false,Ordering::AcqRel) {
+                let curve=crate::response::ResponseCurve::new(&params.response_nodes,&params.response_edges);
+                for (ln,weight) in self.ln_freqs.iter().zip(self.response_targets.iter_mut()) {*weight=curve.weight(*ln);}
+            }
+            let hop=self.window_size as f32/overlap_times as f32;
+            let smoothing=1.0-(-hop/(self.sample_rate*0.02)).exp();
+            for (current,target) in self.response_weights.iter_mut().zip(&self.response_targets) {
+                *current+=smoothing*(*target-*current);
+                if (*target-*current).abs()<1e-6 {*current=*target;}
+            }
+        }
+
         match params.threshold.mode.value() {
             ThresholdMode::Internal => {
                 self.update_envelopes(buffer, channel_idx, params, overlap_times);
@@ -912,8 +938,11 @@ impl CompressorBank {
 
             // If the comprssed output is -10 dBFS and the envelope follower was at -6 dBFS, then we
             // want to apply -4 dB of gain to the bin
-            let gain_difference_db =
-                downwards_compressed + upwards_compressed - (envelope_db * 2.0);
+            // With both banks disengaged, preserve the original arithmetic
+            // unchanged; the response curve must not weight rounding residue.
+            let weight=if *downwards_ratio==1.0 && *upwards_ratio==1.0 {1.0} else {self.response_weights[bin_idx]};
+            let gain_difference_db = crate::response::apply_response(
+                downwards_compressed + upwards_compressed - (envelope_db * 2.0), weight);
             unsafe {
                 *analyzer_input_data
                     .gain_difference_db
@@ -1032,8 +1061,11 @@ impl CompressorBank {
 
             // If the comprssed output is -10 dBFS and the envelope follower was at -6 dBFS, then we
             // want to apply -4 dB of gain to the bin
-            let gain_difference_db =
-                downwards_compressed + upwards_compressed - (envelope_db * 2.0);
+            // With both banks disengaged, preserve the original arithmetic
+            // unchanged; the response curve must not weight rounding residue.
+            let weight=if *downwards_ratio==1.0 && *upwards_ratio==1.0 {1.0} else {self.response_weights[bin_idx]};
+            let gain_difference_db = crate::response::apply_response(
+                downwards_compressed + upwards_compressed - (envelope_db * 2.0), weight);
             unsafe {
                 *analyzer_input_data
                     .gain_difference_db

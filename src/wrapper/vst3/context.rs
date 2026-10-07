@@ -82,6 +82,18 @@ impl<P: Vst3Plugin> InitContext<P> for WrapperInitContext<'_, P> {
 }
 
 impl<P: Vst3Plugin> ProcessContext<P> for WrapperProcessContext<'_, P> {
+    fn set_parameter_normalized<T: crate::prelude::Param>(&self, param: &T, value: f32, notify_host: bool) {
+        let value = value.clamp(0.0, 1.0);
+        let ptr = param.as_ptr();
+        if let Some(hash) = self.inner.param_ptr_to_hash.get(&ptr) {
+            unsafe { ptr.set_normalized_value(value); }
+            if notify_host {
+                self.inner.schedule_gui(Task::ParameterValueChanged(*hash, value));
+                self.inner.schedule_gui(Task::TriggerRestart(vst3_sys::vst::RestartFlags::kParamValuesChanged as i32));
+            }
+        }
+    }
+
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Vst3
     }

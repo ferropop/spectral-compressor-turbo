@@ -11,6 +11,7 @@ description = "A simple but modern API-agnostic audio plugin framework"
 repository = "https://github.com/robbert-vdh/nih-plug"
 
 [workspace]
+exclude = ["vendor/vizia"]
 resolver = "2"
 members = [
   "nih_plug_derive",
@@ -140,6 +141,11 @@ features = [
 [profile.release]
 lto = "thin"
 strip = "symbols"
+
+# Stripped Rust dylibs can have a misaligned LINKEDIT string pool that macOS 27
+# refuses to load. Keep this custom plugin's symbols so its VST3/CLAP can load.
+[profile.release.package.spectral_compressor]
+strip = "none"
 
 [profile.profiling]
 inherits = "release"

@@ -90,7 +90,17 @@ impl View for ParamButton {
             WindowEvent::MouseDown(MouseButton::Left)
             | WindowEvent::MouseDoubleClick(MouseButton::Left)
             | WindowEvent::MouseTripleClick(MouseButton::Left) => {
-                self.toggle_value(cx);
+                if cx.modifiers().contains(Modifiers::CTRL) {
+                    self.param_base.begin_set_parameter(cx);
+                    self.param_base.set_normalized_value(cx,self.param_base.default_normalized_value());
+                    self.param_base.end_set_parameter(cx);
+                } else { self.toggle_value(cx); }
+                meta.consume();
+            }
+            WindowEvent::MouseDown(MouseButton::Right) if cx.modifiers().contains(Modifiers::CTRL) => {
+                self.param_base.begin_set_parameter(cx);
+                self.param_base.set_normalized_value(cx,self.param_base.default_normalized_value());
+                self.param_base.end_set_parameter(cx);
                 meta.consume();
             }
             WindowEvent::MouseScroll(_scroll_x, scroll_y) if self.use_scroll_wheel => {

@@ -119,7 +119,8 @@ impl Debug for ViziaState {
 
 impl<'a> PersistentField<'a, ViziaState> for Arc<ViziaState> {
     fn set(&self, new_value: ViziaState) {
-        self.scale_factor.store(new_value.scale_factor.load());
+        let scale=new_value.scale_factor.load();
+        self.scale_factor.store(if scale.is_finite(){scale.clamp(0.5,2.0)}else{1.0});
     }
 
     fn map<F, R>(&self, f: F) -> R
@@ -161,7 +162,7 @@ impl ViziaState {
     /// applying the user scale factor.
     pub fn scaled_logical_size(&self) -> (u32, u32) {
         let (logical_width, logical_height) = self.inner_logical_size();
-        let scale_factor = self.scale_factor.load();
+        let scale_factor = self.user_scale_factor();
 
         (
             (logical_width as f64 * scale_factor).round() as u32,
@@ -178,7 +179,8 @@ impl ViziaState {
     /// Get the non-DPI related uniform scaling factor the GUI's size will be multiplied with. This
     /// can be changed by changing `cx.user_scale_factor`.
     pub fn user_scale_factor(&self) -> f64 {
-        self.scale_factor.load()
+        let scale=self.scale_factor.load();
+        if scale.is_finite(){scale.clamp(0.5,2.0)}else{1.0}
     }
 
     /// Whether the GUI is currently visible.

@@ -1,10 +1,11 @@
 [package]
 name = "spectral_compressor"
-version = "0.4.3"
+version = "1.0.0"
 edition = "2021"
-authors = ["Robbert van der Helm <mail@robbertvanderhelm.nl>"]
+authors = ["Robbert van der Helm <mail@robbertvanderhelm.nl>", "ferropop"]
 license = "GPL-3.0-or-later"
-homepage = "https://github.com/robbert-vdh/nih-plug/tree/master/plugins/spectral_compressor"
+homepage = "https://github.com/ferropop/spectral-compressor-turbo"
+repository = "https://github.com/ferropop/spectral-compressor-turbo"
 
 [lib]
 crate-type = ["lib", "cdylib"]

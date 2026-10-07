@@ -55,6 +55,13 @@ impl<P: Plugin, B: Backend<P>> InitContext<P> for WrapperInitContext<'_, P, B> {
 }
 
 impl<P: Plugin, B: Backend<P>> ProcessContext<P> for WrapperProcessContext<'_, P, B> {
+    fn set_parameter_normalized<T: crate::prelude::Param>(&self, param: &T, value: f32, notify_host: bool) {
+        let value = value.clamp(0.0, 1.0);
+        let ptr = param.as_ptr();
+        unsafe { ptr.set_normalized_value(value); }
+        if notify_host { self.wrapper.schedule_gui(Task::ParameterValuesChanged); }
+    }
+
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Standalone
     }

@@ -1,1 +1,7 @@
 /target/
+/dist/
+/validation/
+/pluginval.zip
+/validator/
+__pycache__/
+.DS_Store

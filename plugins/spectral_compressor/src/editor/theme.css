@@ -1,5 +1,63 @@
-analyzer {
-  border-color: #0a0a0a;
-  border-width: 1px;
-  color: #0a0a0a;
+/* Turbo dark theme: dim surfaces, readable text, distinct processing overlays. */
+:root {
+  background-color: #181c22;
+  color: #e5e9ef;
+  font-weight: regular;
 }
+.title-area { border-color: #394350; }
+.plugin-title { color: #f0f3f7; }
+.version, .social-credit { color: #aab7c7; }
+.creator-credit { color: #f4c069; }
+label:disabled { color: #85909f; }
+button, param-button {
+  background-color: #252d38;
+  color: #e5e9ef;
+  border-color: #69798d;
+  border-width: 1px;
+  border-radius: 3px;
+}
+button:hover, param-button:hover { background-color: #354152; }
+button:active, param-button:checked {
+  background-color: #41536b;
+  border-color: #9db3d1;
+}
+button:focus-visible, param-button:focus-visible, param-slider:focus-visible {
+  outline-width: 2px;
+  outline-color: #f4c069;
+  outline-offset: 1px;
+}
+param-slider {
+  background-color: #202630;
+  color: #edf0f5;
+  border-color: #69798d;
+  border-radius: 3px;
+}
+param-slider:hover, param-slider:active { background-color: #293343; }
+param-slider .fill { background-color: #40546c; }
+param-slider .fill--modulation { background-color: #76c1f24d; }
+param-slider .value-entry {
+  background-color: transparent;
+  color: #edf0f5;
+}
+param-slider .value-entry .caret { background-color: #edf0f5; }
+param-slider .value-entry .selection { background-color: #76c1f255; }
+textbox { background-color: #202630; color: #edf0f5; border-color: #69798d; }
+analyzer {
+  background-color: #12171d;
+  border-color: #69798d;
+  border-width: 1px;
+  color: #899fb8;
+}
+analyzer label { color: #b5bec8; }
+.response-panel { background-color: #202731; }
+#auto-gain-toggle:checked {
+  background-color: #244c3c;
+  border-color: #79d6a8;
+  color: #d0f4e2;
+}
+#auto-gain-toggle:checked:hover { background-color: #2b604a; }
+resize-handle { color: #c0cede; opacity: 0.6; }
+resize-handle:hover, resize-handle:active { opacity: 1; }
+scrollview scrollbar { background-color: #252d38; }
+scrollview scrollbar .thumb { background-color: #69798d; }
+scrollview scrollbar .thumb:hover { background-color: #9db3d1; }

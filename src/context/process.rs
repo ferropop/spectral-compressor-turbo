@@ -13,6 +13,12 @@ use crate::prelude::{Plugin, PluginNoteEvent};
 // The implementing wrapper needs to be able to handle concurrent requests, and it should perform
 // the actual callback within [MainThreadQueue::schedule_gui].
 pub trait ProcessContext<P: Plugin> {
+    /// Publish a DSP-controlled parameter. The caller manages audio smoothing;
+    /// wrappers marshal optional value notifications onto the GUI thread.
+    fn set_parameter_normalized<T: crate::prelude::Param>(&self, param: &T, value: f32, _notify_host: bool) {
+        unsafe { param.as_ptr().set_normalized_value(value.clamp(0.0, 1.0)); }
+    }
+
     /// Get the current plugin API.
     fn plugin_api(&self) -> PluginApi;
 

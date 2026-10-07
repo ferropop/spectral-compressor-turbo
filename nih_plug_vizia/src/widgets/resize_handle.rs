@@ -17,7 +17,7 @@ pub struct ResizeHandle {
     start_scale_factor: f64,
     /// The DPI factor when we started dragging, includes both the HiDPI scaling and the user
     /// scaling factor. This is kept track of separately to avoid accumulating rounding errors.
-    start_dpi_factor: f32,
+    start_physical_size: (f32,f32),
     /// The cursor position in physical screen pixels when the drag started.
     start_physical_coordinates: (f32, f32),
 }
@@ -30,7 +30,7 @@ impl ResizeHandle {
         ResizeHandle {
             drag_active: false,
             start_scale_factor: 1.0,
-            start_dpi_factor: 1.0,
+            start_physical_size: (1.0,1.0),
             start_physical_coordinates: (0.0, 0.0),
         }
         .build(cx, |_| {})
@@ -56,11 +56,9 @@ impl View for ResizeHandle {
 
                     self.drag_active = true;
                     self.start_scale_factor = cx.user_scale_factor();
-                    self.start_dpi_factor = cx.scale_factor();
-                    self.start_physical_coordinates = (
-                        cx.mouse().cursorx * self.start_dpi_factor,
-                        cx.mouse().cursory * self.start_dpi_factor,
-                    );
+                    let root=cx.cache.get_bounds(Entity::root());
+                    self.start_physical_size=(root.w.max(1.0),root.h.max(1.0));
+                    self.start_physical_coordinates=(cx.mouse().cursorx,cx.mouse().cursory);
 
                     meta.consume();
                 } else {
@@ -88,16 +86,8 @@ impl View for ResizeHandle {
                     // to the same absoltue screen spotion.
                     // TODO: This may start doing fun things when the window grows so large that it
                     //       gets pushed upwards or leftwards
-                    let (compensated_physical_x, compensated_physical_y) =
-                        (x * self.start_dpi_factor, y * self.start_dpi_factor);
-                    let (start_physical_x, start_physical_y) = self.start_physical_coordinates;
-                    let new_scale_factor = (self.start_scale_factor
-                        * (compensated_physical_x / start_physical_x)
-                            .max(compensated_physical_y / start_physical_y)
-                            as f64)
-                        // Vizia rounds borders to integer pixels, and at <0.5 scaling one pixel
-                        // borders will simply disappear
-                        .max(0.5);
+                    let new_scale_factor=drag_scale(self.start_scale_factor,
+                        self.start_physical_size,self.start_physical_coordinates,(x,y));
 
                     // If this is different then the window will automatically be resized at the end
                     // of the frame
@@ -182,6 +172,12 @@ impl View for ResizeHandle {
     }
 }
 
+/// Project pointer displacement onto a proportional resize, in physical units.
+fn drag_scale(start:f64,(w,h):(f32,f32),(sx,sy):(f32,f32),(x,y):(f32,f32))->f64 {
+    let ratio=1.0+((x-sx)*w+(y-sy)*h)/(w*w+h*h).max(1.0);
+    (start*ratio as f64).clamp(0.5,2.0)
+}
+
 /// Test whether a point intersects with the triangle of this resize handle.
 fn intersects_triangle(bounds: BoundingBox, (x, y): (f32, f32)) -> bool {
     // We could also compute Barycentric coordinates, but this is simple and I like not having to
@@ -206,6 +202,36 @@ fn intersects_triangle(bounds: BoundingBox, (x, y): (f32, f32)) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resize_tracks_relative_motion_and_is_dpi_independent() {
+        for dpi in [1.0,2.0] {
+            let size=(1360.0*dpi,565.0*dpi);let pointer=(1355.0*dpi,560.0*dpi);
+            let new=(pointer.0+size.0*0.25,pointer.1+size.1*0.25);
+            assert!((drag_scale(1.0,size,pointer,new)-1.25).abs()<1e-6);
+            assert_eq!(drag_scale(1.0,size,pointer,pointer),1.0);
+            assert!(drag_scale(1.0,size,pointer,(pointer.0-100.0*dpi,pointer.1))<1.0);
+        }
+    }
+    #[test]
+    fn actual_handle_drag_updates_user_zoom_and_renderer_dpi_together() {
+        use vizia::context::backend::BackendContext;
+        let mut cx=Context::new(WindowSize::new(1360,565),1.0);
+        let e=ResizeHandle::new(&mut cx).entity();let mut backend=BackendContext::new_with_event_manager(&mut cx);
+        backend.set_scale_factor(2.0);
+        backend.cache().set_bounds(Entity::root(),BoundingBox{x:0.0,y:0.0,w:2720.0,h:1130.0});
+        backend.cache().set_bounds(e,BoundingBox{x:2680.0,y:1090.0,w:40.0,h:40.0});
+        backend.emit_origin(WindowEvent::MouseMove(2715.0,1125.0));backend.process_events();
+        let send=|backend:&mut BackendContext,event| {
+            backend.send_event(Event::new(event).target(e).origin(e).propagate(Propagation::Direct));backend.process_events();
+        };
+        send(&mut backend,WindowEvent::MouseDown(MouseButton::Left));
+        send(&mut backend,WindowEvent::MouseMove(3395.0,1407.5));
+        assert_eq!(backend.user_scale_factor(),1.25);assert_eq!(backend.scale_factor(),2.5);
+        send(&mut backend,WindowEvent::MouseUp(MouseButton::Left));
+        send(&mut backend,WindowEvent::MouseMove(2000.0,900.0));
+        assert_eq!(backend.user_scale_factor(),1.25);
+    }
 
     #[test]
     fn triangle_intersection() {

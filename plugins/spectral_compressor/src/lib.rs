@@ -27,6 +27,31 @@ use std::sync::{Arc, Mutex};
 use triple_buffer::TripleBuffer;
 
 mod analyzer;
+mod auto_gain;
+mod response;
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    pub struct Setter;
+    impl ProcessContext<SpectralCompressor> for Setter {
+        fn plugin_api(&self)->PluginApi { PluginApi::Vst3 }
+        fn execute_background(&self,_:()) {}
+        fn execute_gui(&self,_:()) {}
+        fn transport(&self)->&Transport { panic!("Not used by parameter tests") }
+        fn next_event(&mut self)->Option<PluginNoteEvent<SpectralCompressor>> {None}
+        fn send_event(&mut self,_:PluginNoteEvent<SpectralCompressor>) {}
+        fn set_latency_samples(&self,_:u32) {}
+        fn set_current_voice_capacity(&self,_:u32) {}
+    }
+    pub fn set_raw(ptr:ParamPtr,value:f32) {
+        unsafe {match ptr {
+            ParamPtr::FloatParam(p)=>Setter.set_parameter_normalized(&*p,value,false),
+            ParamPtr::IntParam(p)=>Setter.set_parameter_normalized(&*p,value,false),
+            ParamPtr::BoolParam(p)=>Setter.set_parameter_normalized(&*p,value,false),
+            ParamPtr::EnumParam(p)=>Setter.set_parameter_normalized(&*p,value,false),
+        }}
+    }
+}
 mod compressor_bank;
 mod curve;
 mod dry_wet_mixer;
@@ -72,6 +97,11 @@ pub struct SpectralCompressor {
     /// the magic happens.
     compressor_bank: compressor_bank::CompressorBank,
 
+    auto_gain: auto_gain::AutoGain,
+    last_output_gain: f32,
+    gain_notify_samples: usize,
+    last_auto_enabled: bool,
+
     /// The algorithms for the FFT and IFFT operations, for each supported order so we can switch
     /// between them without replanning or allocations. Initialized during `initialize()`.
     plan_for_order: Option<[Plan; MAX_WINDOW_ORDER - MIN_WINDOW_ORDER + 1]>,
@@ -93,6 +123,8 @@ struct Plan {
 
 #[derive(Params)]
 pub struct SpectralCompressorParams {
+    #[id = "auto_gain"]
+    pub auto_gain_enabled: BoolParam,
     /// The editor state, saved together with the parameter state so the custom scaling can be
     /// restored.
     #[persist = "editor-state"]
@@ -115,6 +147,10 @@ pub struct SpectralCompressorParams {
     /// Parameters for the upwards and downwards compressors.
     #[nested(group = "compressors")]
     pub compressors: compressor_bank::CompressorBankParams,
+    #[nested(array)]
+    pub response_nodes: [response::ResponseNode; response::NODE_COUNT],
+    #[nested(group = "response filters")]
+    pub response_edges: response::ResponseEdges,
 }
 
 /// Global parameters controlling the output stage and all compressors.
@@ -179,6 +215,10 @@ impl Default for SpectralCompressor {
             window_function: Vec::with_capacity(MAX_WINDOW_SIZE),
             dry_wet_mixer: dry_wet_mixer::DryWetMixer::new(0, 0, 0),
             compressor_bank,
+            auto_gain: auto_gain::AutoGain::default(),
+            last_output_gain: 1.0,
+            gain_notify_samples: 0,
+            last_auto_enabled: false,
 
             // This is initialized later since we don't want to do non-trivial computations before
             // the plugin is initialized
@@ -268,6 +308,10 @@ impl SpectralCompressorParams {
         let editor_mode: Arc<AtomicCell<EditorMode>> = Arc::default();
 
         SpectralCompressorParams {
+            auto_gain_enabled: BoolParam::new("Auto Gain Compensation", false)
+                .hide_in_generic_ui(),
+            response_nodes: std::array::from_fn(|i| response::ResponseNode::new(i, compressor_bank.should_update_response.clone())),
+            response_edges: response::ResponseEdges::new(compressor_bank.should_update_response.clone()),
             editor_state: editor::default_state(editor_mode.clone()),
             editor_mode,
 
@@ -282,8 +326,8 @@ impl SpectralCompressorParams {
 }
 
 impl Plugin for SpectralCompressor {
-    const NAME: &'static str = "Spectral Compressor";
-    const VENDOR: &'static str = "Robbert van der Helm";
+    const NAME: &'static str = "Spectral Compressor Turbo";
+    const VENDOR: &'static str = "Robbert van der Helm & ferropop";
     const URL: &'static str = env!("CARGO_PKG_HOMEPAGE");
     const EMAIL: &'static str = "mail@robbertvanderhelm.nl";
 
@@ -315,6 +359,19 @@ impl Plugin for SpectralCompressor {
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
+    }
+
+    fn filter_state(state: &mut PluginState) {
+        // Migrate the previous extra trim into the one retained Output Gain.
+        if let Some(saved) = state.fields.remove("auto-gain-db") {
+            if let Ok(db) = saved.trim_matches('"').parse::<f32>() {
+                if db.is_finite() {
+                    if let Some(nih_plug::wrapper::state::ParamValue::F32(gain)) = state.params.get_mut("output") {
+                        *gain = (*gain * util::db_to_gain(db)).clamp(util::db_to_gain(-50.0), util::db_to_gain(50.0));
+                    }
+                }
+            }
+        }
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
@@ -360,6 +417,11 @@ impl Plugin for SpectralCompressor {
         );
         self.compressor_bank
             .update_capacity(num_output_channels, MAX_WINDOW_SIZE);
+        self.auto_gain.configure(buffer_config.sample_rate,
+            buffer_config.max_buffer_size as usize, MAX_WINDOW_SIZE,
+            util::gain_to_db(self.params.global.output_gain.value()));
+        self.last_output_gain = self.params.global.output_gain.value();
+        self.gain_notify_samples = 0;
 
         // Planning with RustFFT is very fast, but it will still allocate we we'll plan all of the
         // FFTs we might need in advance
@@ -388,6 +450,9 @@ impl Plugin for SpectralCompressor {
     fn reset(&mut self) {
         self.dry_wet_mixer.reset();
         self.compressor_bank.reset();
+        self.auto_gain.reset_analysis();
+        self.auto_gain.set_gain(util::gain_to_db(self.params.global.output_gain.value()));
+        self.last_output_gain = self.params.global.output_gain.value();
     }
 
     fn process(
@@ -404,6 +469,12 @@ impl Plugin for SpectralCompressor {
             self.resize_for_window(window_size);
             context.set_latency_samples(self.stft.latency_samples());
         }
+        let enabled = self.params.auto_gain_enabled.value();
+        let output_gain_value = self.params.global.output_gain.value();
+        if output_gain_value != self.last_output_gain {
+            self.auto_gain.set_gain(util::gain_to_db(output_gain_value));
+        }
+        self.auto_gain.capture_input(buffer, self.stft.latency_samples() as usize);
 
         // These plans have already been made during initialization we can switch between versions
         // without reallocating
@@ -429,8 +500,8 @@ impl Plugin for SpectralCompressor {
         // threshold option. When sidechaining is enabled this is used to gain up the sidechain
         // signal instead.
         let input_gain = gain_compensation.sqrt();
-        let output_gain = self.params.global.output_gain.value() * gain_compensation.sqrt();
-        // TODO: Auto makeup gain
+        // Output Gain is applied once, to the complete dry/wet mix below.
+        let output_gain = gain_compensation.sqrt();
 
         // This is mixed in later with latency compensation applied
         self.dry_wet_mixer.write_dry(buffer);
@@ -503,6 +574,18 @@ impl Plugin for SpectralCompressor {
             dry_wet_mixer::MixingStyle::Linear,
             self.stft.latency_samples() as usize,
         );
+
+        self.auto_gain.process_output(buffer, enabled);
+        self.gain_notify_samples += buffer.samples();
+        let notify = self.gain_notify_samples >= (self.buffer_config.sample_rate / 30.0) as usize
+            || (self.last_auto_enabled && !enabled);
+        if enabled || self.last_auto_enabled {
+            let param = &self.params.global.output_gain;
+            context.set_parameter_normalized(param, param.preview_normalized(self.auto_gain.gain()), notify);
+        }
+        if notify { self.gain_notify_samples = 0; }
+        self.last_auto_enabled = enabled;
+        self.last_output_gain = self.params.global.output_gain.value();
 
         ProcessStatus::Normal
     }
@@ -579,6 +662,16 @@ fn process_stft_main(
         first_non_dc_bin_idx,
     );
 
+    // Extreme upstream threshold curves can overflow a bin gain, yielding Inf
+    // or NaN (including 0 * Inf in the Nyquist imaginary component). Never pass
+    // nonfinite bins into the inverse FFT: realfft otherwise aborts the host.
+    // Finite spectra are untouched, preserving the disabled-mode baseline.
+    for bin in complex_fft_buffer.iter_mut() {
+        if !bin.re.is_finite() || !bin.im.is_finite() {
+            *bin = Complex32::default();
+        }
+    }
+
     // Inverse FFT back into the scratch buffer. This will be added to a ring buffer
     // which gets written back to the host at a one block delay.
     fft_plan
@@ -620,7 +713,7 @@ fn process_stft_sidechain(
 }
 
 impl ClapPlugin for SpectralCompressor {
-    const CLAP_ID: &'static str = "nl.robbertvanderhelm.spectral-compressor";
+    const CLAP_ID: &'static str = "com.ferropop.spectral-compressor-turbo";
     const CLAP_DESCRIPTION: Option<&'static str> = Some("Turn things into pink noise on demand");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
@@ -636,7 +729,7 @@ impl ClapPlugin for SpectralCompressor {
 }
 
 impl Vst3Plugin for SpectralCompressor {
-    const VST3_CLASS_ID: [u8; 16] = *b"SpectrlComprRvdH";
+    const VST3_CLASS_ID: [u8; 16] = *b"SpectralTurbo001";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
         Vst3SubCategory::Fx,
         Vst3SubCategory::Dynamics,
