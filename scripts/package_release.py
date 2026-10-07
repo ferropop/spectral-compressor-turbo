@@ -16,8 +16,8 @@ for filename in ('README.md','COPYING','LICENSE','THIRD-PARTY.md'):
     if (root/filename).exists(): shutil.copy2(root/filename,out/filename)
 licenses=out/'Licenses'
 licenses.mkdir(exist_ok=True)
-for src,name in [('plugins/spectral_compressor/src/editor/fonts/LICENSE','Noto-Sans-OFL.txt'),('vendor/vizia/LICENSE','Vizia-MIT.txt')]:
-    shutil.copy2(root/src,licenses/name)
+for src,license_name in [('plugins/spectral_compressor/src/editor/fonts/LICENSE','Noto-Sans-OFL.txt'),('vendor/vizia/LICENSE','Vizia-MIT.txt')]:
+    shutil.copy2(root/src,licenses/license_name)
 if (root/'VALIDATION.md').exists(): shutil.copy2(root/'VALIDATION.md',out/'VALIDATION.md')
 validation=root/'validation'
 if validation.exists(): shutil.copytree(validation,out/'Validation',dirs_exist_ok=True)
