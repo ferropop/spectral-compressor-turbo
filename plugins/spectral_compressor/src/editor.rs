@@ -34,13 +34,14 @@ mod mode_button;
 mod relative_slider;
 mod response_graph;
 mod zoom;
+mod settings;
 
 /// The entire GUI's width, in logical pixels.
 const EXPANDED_GUI_WIDTH: u32 = 1360;
 /// The width of the GUI's main part containing the controls.
 const COLLAPSED_GUI_WIDTH: u32 = 680;
 /// The entire GUI's height, in logical pixels.
-const GUI_HEIGHT: u32 = 600;
+const GUI_HEIGHT: u32 = 615;
 // I couldn't get `LayoutType::Grid` to work as expected, so we'll fake a 4x4 grid with
 // hardcoded column widths
 const COLUMN_WIDTH: Units = Pixels(330.0);
@@ -89,11 +90,12 @@ pub(crate) fn create(editor_state: Arc<ViziaState>, editor_data: Data) -> Option
         assets::register_noto_sans_regular(cx);
         cx.add_font_mem(include_bytes!("editor/fonts/TurboCredit-Regular.ttf"));
 
-        if let Err(err) = cx.add_stylesheet(include_style!("src/editor/theme.css")) {
+        if let Err(err) = cx.add_stylesheet(crate::palette::PaletteStyle(editor_data.params.palette.clone())) {
             nih_error!("Failed to load stylesheet: {err:?}")
         }
 
         editor_data.clone().build(cx);
+        settings::Settings::new(&editor_data.params).build(cx);
 
         HStack::new(cx, |cx| {
             main_column(cx);
@@ -107,46 +109,39 @@ pub(crate) fn create(editor_state: Arc<ViziaState>, editor_data: Data) -> Option
             });
         });
 
+        settings::build(cx);
         ResizeHandle::new(cx);
     })
 }
 
 fn main_column(cx: &mut Context) {
     VStack::new(cx, |cx| {
-        HStack::new(cx, |cx| {
-            EditorModeButton::new(cx, Data::editor_mode, Data::editor_mode.map(|m| if m.load()==EditorMode::AnalyzerVisible {"Hide response"} else {"Show response"}))
-                // Makes this align a bit nicer with the plugin name
-                .top(Pixels(2.0))
-                .left(Pixels(2.0));
-
-            zoom::GuiZoom::new(cx);
-
-            VStack::new(cx, |cx| {
-                HStack::new(cx, |cx| {
-                    Label::new(cx, "Spectral Compressor Turbo")
-                        .class("plugin-title")
-                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
-                        .font_weight(FontWeightKeyword::Regular)
-                        .font_size(23.0);
-                    Label::new(cx, SpectralCompressor::VERSION)
-                        .class("version")
-                        .font_size(10.0).top(Stretch(1.0)).bottom(Pixels(3.0));
-                }).height(Pixels(29.0)).col_between(Pixels(7.0));
-                HStack::new(cx, |cx| {
-                    Label::new(cx, "by ＦＥＲＲＯ")
-                        .class("creator-credit")
-                        .font_family(vec![FamilyOwned::Name(String::from(CREDIT_FONT))])
-                        .font_weight(FontWeightKeyword::Regular).font_size(12.0);
-                    Label::new(cx, "www.instagram.com/ferropop")
-                        .class("social-credit").font_size(11.0);
-                }).height(Pixels(18.0)).col_between(Pixels(14.0));
-            }).width(Pixels(377.0)).height(Pixels(49.0));
-        })
-        .class("title-area")
-        .height(Pixels(60.0))
-        .right(Pixels(17.0)).bottom(Pixels(8.0))
-        .left(Pixels(10.0)).top(Pixels(10.0))
-        .col_between(Stretch(1.0));
+        VStack::new(cx, |cx| {
+            HStack::new(cx, |cx| {
+                Label::new(cx, "Spectral Compressor Turbo").class("plugin-title")
+                    .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                    .font_weight(FontWeightKeyword::Regular).font_size(23.0);
+                Label::new(cx, SpectralCompressor::VERSION).class("version")
+                    .font_size(10.0).top(Stretch(1.0)).bottom(Pixels(3.0));
+                Element::new(cx).width(Stretch(1.0));
+                ParamButton::new(cx,Data::params,|p|&p.delta).with_label("DELTA")
+                    .disable_scroll_wheel().id("delta-toggle").font_size(11.0)
+                    .height(Pixels(25.0)).width(Pixels(58.0));
+                Button::new(cx,|cx|cx.emit(settings::SettingsEvent::Toggle),|cx|Label::new(cx,"Settings"))
+                    .id("open-settings").font_size(11.0).height(Pixels(25.0)).width(Pixels(70.0));
+            }).height(Pixels(30.0)).col_between(Pixels(7.0));
+            HStack::new(cx, |cx| {
+                Label::new(cx,"by ＦＥＲＲＯ").class("creator-credit")
+                    .font_family(vec![FamilyOwned::Name(String::from(CREDIT_FONT))])
+                    .font_weight(FontWeightKeyword::Regular).font_size(12.0);
+                Label::new(cx,"www.instagram.com/ferropop").class("social-credit").font_size(11.0);
+                Element::new(cx).width(Stretch(1.0));
+                EditorModeButton::new(cx,Data::editor_mode,Data::editor_mode.map(|m|if m.load()==EditorMode::AnalyzerVisible {"Hide response"}else{"Show response"}))
+                    .font_size(11.0).height(Pixels(23.0));
+                zoom::GuiZoom::new(cx);
+            }).height(Pixels(25.0)).col_between(Pixels(12.0));
+        }).class("title-area").height(Pixels(65.0))
+            .right(Pixels(12.0)).bottom(Pixels(8.0)).left(Pixels(12.0)).top(Pixels(10.0));
 
         HStack::new(cx, |cx| {
             make_column(cx, "Globals", |cx| {

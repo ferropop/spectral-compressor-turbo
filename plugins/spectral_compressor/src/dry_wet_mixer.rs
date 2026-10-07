@@ -106,6 +106,13 @@ impl DryWetMixer {
         self.next_write_position = (self.next_write_position + buffer.samples()) % delay_line_len;
     }
 
+    /// Read exactly the same latency-aligned dry sample used by the mixer.
+    pub fn dry_sample(&self,sample:usize,channel:usize,block_size:usize,latency:usize)->f32 {
+        let len=self.delay_line[channel].len();
+        let start=(self.next_write_position+len-block_size-latency)%len;
+        self.delay_line[channel][(start+sample)%len]
+    }
+
     /// Mix the dry signal into the buffer. The ratio is a `[0, 1]` integer where 0 results in an
     /// all-dry signal, and 1 results in an all-wet signal. This should be called at the start of
     /// the process function.

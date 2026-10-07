@@ -25,9 +25,19 @@ Existing sessions do not automatically replace older plugin instances.
 - Every slider uses relative dragging. Clicking alone does not change its value.
   Shift-drag makes fine adjustments; Alt/Option-click opens numeric entry.
 - Ctrl-click resets a parameter to its default.
-- Auto Gain Compensation measures K-weighted momentary input/output loudness and
-  sets the actual Output Gain. It tracks parameter changes with smooth matching;
-  turning it off leaves the current gain in place.
+- Auto Gain Compensation sets the actual Output Gain. Smart averaging is on by
+  default: K-weighted 3-second input/output energy averages, gentle steady
+  tracking, and a brief fast relearn after processing edits. It reduces recurring
+  kick/tail gain pumping. Settings can restore the original 400 ms momentary
+  behavior. Turning Auto Gain off leaves the current Output Gain in place.
+- DELTA auditions latency-aligned dry minus processed mix, before the sole Output
+  Gain stage, with a 5 ms switching fade. Auto Gain continues measuring the normal
+  processed signal so the difference signal cannot influence gain calibration.
+- Settings contains a palette manager. CGA is the default, using the supplied
+  black, white, #8BFCFB cyan, and #DC40F0 magenta swatches. Turbo Dark, Amber,
+  Ocean, and Paper are included. Edit the four hex colors, apply, name/save, or
+  delete a custom preset. Custom presets persist in the user's app settings;
+  the active palette also travels with the plugin's saved state.
 - Click-drag in the graph creates a bell under your pointer. Drag nodes to shape
   processing, Alt-click deletes a bell, and wheel changes the selected node's Q.
   The permanent HPF/LPF handles define the processing range.
@@ -36,7 +46,7 @@ Existing sessions do not automatically replace older plugin instances.
 - Use the corner handle or − / percentage / + controls for proportional 50–200% zoom.
 
 The dark theme uses dim charcoal surfaces and softer white text, with separate
-gold response, blue downward threshold, and green upward threshold colors.
+palette-specific response, downward threshold, and upward threshold colors.
 This follows the emphasis on contrast and restrained background colors in
 [Apple's Dark Mode guidance](https://developer.apple.com/design/human-interface-guidelines/dark-mode).
 

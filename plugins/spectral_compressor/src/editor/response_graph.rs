@@ -23,9 +23,13 @@ impl Analyzer {
         Label::new(cx,"RESPONSE SHAPER  |  Click-drag: bell  ·  Alt-click: delete  ·  Wheel: Q")
             .position_type(PositionType::SelfDirected).top(Pixels(3.0)).left(Pixels(8.0))
             .id("response-gesture-hint").height(Pixels(20.0)).font_size(10.0).hoverable(false);
-        Label::new(cx,"Gold: response  |  Blue/green: thresholds  |  Shading: reduction/expansion")
-            .position_type(PositionType::SelfDirected).top(Pixels(16.0)).left(Pixels(8.0))
-            .height(Pixels(11.0)).font_size(9.0).hoverable(false);
+        HStack::new(cx,|cx| {
+            Label::new(cx,"Response").class("legend-response");
+            Label::new(cx,"Down threshold").class("legend-down");
+            Label::new(cx,"Up threshold").class("legend-up");
+            Label::new(cx,"Shading: gain change");
+        }).position_type(PositionType::SelfDirected).top(Pixels(16.0)).left(Pixels(8.0))
+            .height(Pixels(11.0)).font_size(9.0).col_between(Pixels(12.0)).hoverable(false);
         Binding::new(cx,Analyzer::selected,|cx,selected| {
             let i=selected.get(cx);
             VStack::new(cx,|cx| {
@@ -69,15 +73,15 @@ impl Analyzer {
     fn q(&self,i:usize)->&FloatParam {
         if i==HPF {&self.params.response_edges.high_pass_q} else if i==LPF {&self.params.response_edges.low_pass_q} else {&self.params.response_nodes[i].q}
     }
-    fn position(&self,i:usize,b:BoundingBox)->(f32,f32) {
+    fn position(&self,i:usize,b:BoundingBox,scale:f32)->(f32,f32) {
         let x=b.x+(self.frequency(i).value().ln()-LN_MIN)/LN_RANGE*b.w;
         let y=if i<NODE_COUNT {b.y+(0.5-self.params.response_nodes[i].amount.value()/36.0)*b.h} else {b.y+b.h*0.5};
-        (x,y)
+        (x,y.clamp(b.y+(8.0*scale).min(b.h*0.5),b.y+b.h-(8.0*scale).min(b.h*0.5)))
     }
     fn hit(&self,x:f32,y:f32,b:BoundingBox,scale:f32)->Option<usize> {
         // Bells take priority when a bell overlaps a filter handle.
         (0..NODE_COUNT+2).filter(|&i|i>=NODE_COUNT||self.params.response_nodes[i].enabled.value())
-            .find(|&i| {let(nx,ny)=self.position(i,b);(nx-x).hypot(ny-y)<=12.0*scale})
+            .find(|&i| {let(nx,ny)=self.position(i,b,scale);(nx-x).hypot(ny-y)<=12.0*scale})
     }
     pub(super) fn response_event(&mut self,cx:&mut EventContext,event:&mut Event) {
         event.map(|_:&DeleteNode,meta| {
@@ -87,8 +91,9 @@ impl Analyzer {
         event.map(|window,meta| match window {
             WindowEvent::MouseDown(button) if *button==MouseButton::Left||*button==MouseButton::Right => {
                 let b=plot_bounds(cx.bounds(),cx.scale_factor());let(x,y)=(cx.mouse().cursorx,cx.mouse().cursory);
-                if x<b.x-12.0*cx.scale_factor()||x>b.x+b.w+12.0*cx.scale_factor()||y<b.y||y>b.y+b.h {return;}
+                // Test handles first: edge handles remain clickable across their full hit circle.
                 let hit=self.hit(x,y,b,cx.scale_factor());
+                if hit.is_none() && (x<b.x||x>b.x+b.w||y<b.y||y>b.y+b.h) {return;}
                 if cx.modifiers().contains(Modifiers::CTRL) {
                     if let Some(i)=hit {
                         self.selected=i;
@@ -146,20 +151,21 @@ impl Analyzer {
     }
     pub(super) fn draw_response(&self,cx:&mut DrawContext,canvas:&mut Canvas) {
         let scale=cx.scale_factor();let b=plot_bounds(cx.bounds(),scale);
+        let palette=self.params.palette.lock().unwrap().active();
         let mut baseline=vg::Path::new();baseline.move_to(b.x,b.y+b.h*0.5);baseline.line_to(b.x+b.w,b.y+b.h*0.5);
         canvas.stroke_path(&baseline,&vg::Paint::color(vg::Color::rgbaf(0.5,0.5,0.5,0.45)).with_line_width(scale));
         let curve=response::ResponseCurve::new(&self.params.response_nodes,&self.params.response_edges);
         let mut path=vg::Path::new();
         for i in 0..=256 {let t=i as f32/256.0;let y=b.y+(0.5-curve.db(LN_MIN+t*LN_RANGE)/36.0).clamp(0.0,1.0)*b.h;
             if i==0 {path.move_to(b.x,y);}else{path.line_to(b.x+t*b.w,y);}}
-        canvas.stroke_path(&path,&vg::Paint::color(vg::Color::rgb(244,192,105)).with_line_width(2.0*scale));
-        let mut text=vg::Paint::color(vg::Color::rgb(181,190,200));text.set_font_size(11.0*scale);
+        canvas.stroke_path(&path,&vg::Paint::color(palette.color(3)).with_line_width(2.0*scale));
+        let mut text=vg::Paint::color(palette.color(1));text.set_font_size(11.0*scale);
         let font=self.label_font.get().or_else(||canvas.add_font_mem(nih_plug_vizia::assets::fonts::NOTO_SANS_REGULAR).ok());
         if let Some(font)=font {self.label_font.set(Some(font));text.set_font(&[font]);}
         for i in 0..NODE_COUNT+2 {
             if i<NODE_COUNT&&!self.params.response_nodes[i].enabled.value(){continue;}
-            let(x,y)=self.position(i,b);let mut node=vg::Path::new();node.circle(x,y,6.0*scale);
-            canvas.fill_path(&node,&vg::Paint::color(if i==self.selected {vg::Color::rgb(244,192,105)} else {vg::Color::rgb(118,193,242)}));
+            let(x,y)=self.position(i,b,scale);let mut node=vg::Path::new();node.circle(x,y,6.0*scale);
+            canvas.fill_path(&node,&vg::Paint::color(if i==self.selected {palette.color(1)} else {palette.color(2)}));
             if i>=NODE_COUNT {let label=if i==HPF{"HPF"}else{"LPF"};let tx=if i==HPF{x+10.0*scale}else{x-30.0*scale};let _=canvas.fill_text(tx,y-10.0*scale,label,&text);}
         }
         for (frequency,label) in [(30.0_f32,"30"),(100.0,"100"),(1000.0,"1k"),(10000.0,"10k"),(22000.0,"22k")] {
@@ -208,6 +214,28 @@ mod tests {
     fn point(hz:f32,db:f32)->(f32,f32) {
         let b=BoundingBox {x:8.0,y:28.0,w:584.0,h:358.0};
         (b.x+(hz.ln()-LN_MIN)/LN_RANGE*b.w,b.y+(0.5-db/36.0)*b.h)
+    }
+    #[test]
+    fn extreme_nodes_remain_inside_plot_and_can_be_regrabbed_after_release() {
+        for scale in [0.5_f32,1.0,2.0,4.0] {
+            for (outside,expected) in [(-1000.0_f32,18.0),(1500.0,-18.0)] {
+                let(p,mut cx,e,_)=fixture();let mut backend=BackendContext::new_with_event_manager(&mut cx);
+                backend.set_scale_factor(scale as f64);
+                EventContext::new_with_current(backend.context(),e).set_bounds(BoundingBox{x:0.0,y:0.0,w:600.0*scale,h:500.0*scale});
+                let (x,y)=point(1000.0,0.0);move_to(&mut backend,e,x*scale,y*scale);
+                send(&mut backend,e,WindowEvent::MouseDown(MouseButton::Left));
+                move_to(&mut backend,e,x*scale,outside*scale);send(&mut backend,e,WindowEvent::MouseUp(MouseButton::Left));
+                assert_eq!(p.params.response_nodes[0].amount.value(),expected);
+                let b=plot_bounds(BoundingBox{x:0.0,y:0.0,w:600.0*scale,h:500.0*scale},scale);
+                let(nx,ny)={let mut context=EventContext::new_with_current(backend.context(),e);context.get_view::<Analyzer>().unwrap().position(0,b,scale)};
+                assert!(ny-6.0*scale>=b.y && ny+6.0*scale<=b.y+b.h);
+                move_to(&mut backend,e,nx,ny);send(&mut backend,e,WindowEvent::MouseDown(MouseButton::Left));
+                move_to(&mut backend,e,nx,ny+if expected>0.0 {25.0*scale}else{-25.0*scale});
+                send(&mut backend,e,WindowEvent::MouseUp(MouseButton::Left));
+                assert!(p.params.response_nodes[0].amount.value().abs()<18.0,"Could not regrab edge node at scale {scale}");
+                assert!(!p.params.response_nodes[1].enabled.value(),"Regrab created a second node");
+            }
+        }
     }
     #[test]
     fn production_graph_constructs_its_gesture_hint_and_filter_controls() {

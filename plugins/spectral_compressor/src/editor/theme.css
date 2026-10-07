@@ -61,3 +61,20 @@ resize-handle:hover, resize-handle:active { opacity: 1; }
 scrollview scrollbar { background-color: #252d38; }
 scrollview scrollbar .thumb { background-color: #69798d; }
 scrollview scrollbar .thumb:hover { background-color: #9db3d1; }
+.palette-settings {
+  background-color: #202731;
+  color: #e5e9ef;
+  border-width: 2px;
+  border-color: #69798d;
+}
+.palette-settings:checked { display: flex; }
+.palette-settings:not(:checked) { display: none; }
+#delta-toggle:checked, #smart-gain-toggle:checked {
+  background-color: #244c3c;
+  border-color: #79d6a8;
+}
+.legend-response { color: #f4c069; }
+.legend-down { color: #76c1f2; }
+.legend-up { color: #e5e9ef; }
+button:disabled { background-color: #202630; border-color: #85909f; }
+button:disabled label { color: #85909f; }

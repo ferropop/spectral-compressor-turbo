@@ -1,6 +1,6 @@
 [package]
 name = "spectral_compressor"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 authors = ["Robbert van der Helm <mail@robbertvanderhelm.nl>", "ferropop"]
 license = "GPL-3.0-or-later"
@@ -22,3 +22,4 @@ crossbeam = "0.8"
 open = "3.0"
 serde = { version = "1.0", features = ["derive"] }
 triple_buffer = "6.2"
+serde_json = "1.0"

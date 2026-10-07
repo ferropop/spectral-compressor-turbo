@@ -34,22 +34,6 @@ const LN_FREQ_RANGE_START_HZ: f32 = 3.4011974; // 30.0f32.ln();
 const LN_FREQ_RANGE_END_HZ: f32 = 9.998797; // 22_000.0f32.ln();
 const LN_FREQ_RANGE: f32 = LN_FREQ_RANGE_END_HZ - LN_FREQ_RANGE_START_HZ;
 
-/// The color used for drawing the overlay. Currently not configurable using the style sheet (that
-/// would be possible by moving this to a dedicated view and overlaying that).
-///
-/// # Notes
-///
-/// This is drawn using some blending options that make it interact differently with darker
-/// backgrounds.
-const GR_BAR_OVERLAY_COLOR: vg::Color = vg::Color::rgbaf(0.35,0.7,1.0,0.4);
-
-/// The color used for drawing the downwards compression threshold curve. Looks somewhat similar to
-/// `GR_BAR_OVERLAY_COLOR` when factoring in the blending.
-const DOWNWARDS_THRESHOLD_CURVE_COLOR: vg::Color = vg::Color::rgbaf(0.46,0.76,0.98,0.95);
-/// The color used for drawing the upwards compression threshold curve. Slightly color to make to
-/// make the output look less confusing.
-const UPWARDS_THRESHOLD_CURVE_COLOR: vg::Color = vg::Color::rgbaf(0.45,0.86,0.65,0.95);
-
 /// A very analyzer showing the envelope followers as a magnitude spectrum with an overlay for the
 /// gain reduction.
 #[derive(Lens)]
@@ -99,12 +83,13 @@ impl View for Analyzer {
     }
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
+        let palette=self.params.palette.lock().unwrap().active();
         // Custom drawing bypasses Vizia's default background/border painter.
         let outer = cx.bounds();
         let mut frame = vg::Path::new();
         frame.rect(outer.x, outer.y, outer.w, outer.h);
-        canvas.fill_path(&frame, &vg::Paint::color(vg::Color::rgb(18, 23, 29)));
-        canvas.stroke_path(&frame, &vg::Paint::color(vg::Color::rgb(105, 121, 141))
+        canvas.fill_path(&frame, &vg::Paint::color(palette.color(0)));
+        canvas.stroke_path(&frame, &vg::Paint::color(palette.color(2))
             .with_line_width(cx.scale_factor()));
         let bounds = plot_bounds(cx.bounds(),cx.scale_factor());
         if bounds.w == 0.0 || bounds.h == 0.0 {
@@ -117,7 +102,7 @@ impl View for Analyzer {
         let nyquist = self.sample_rate.load(Ordering::Relaxed) / 2.0;
 
         draw_spectrum(cx, canvas, analyzer_data, nyquist);
-        draw_gain_reduction(cx,canvas,analyzer_data,nyquist);
+        draw_gain_reduction(cx,canvas,analyzer_data,nyquist,&palette);
         draw_threshold_curve(cx,canvas,&self.params);
         self.draw_response(cx,canvas);
     }
@@ -264,9 +249,9 @@ fn draw_threshold_curve(cx: &mut DrawContext, canvas: &mut Canvas, params: &crat
     let bounds = plot_bounds(cx.bounds(),cx.scale_factor());
 
     let line_width = cx.scale_factor() * 1.5;
-    let downwards_paint =
-        vg::Paint::color(DOWNWARDS_THRESHOLD_CURVE_COLOR).with_line_width(line_width);
-    let upwards_paint = vg::Paint::color(UPWARDS_THRESHOLD_CURVE_COLOR).with_line_width(line_width);
+    let palette=params.palette.lock().unwrap().active();
+    let downwards_paint=vg::Paint::color(palette.color(2)).with_line_width(line_width);
+    let upwards_paint=vg::Paint::color(palette.color(1)).with_line_width(line_width);
 
     // This can be done slightly cleverer but for our purposes drawing line segments that are either
     // 1 pixel apart or that split the curve up into 100 segments (whichever results in the least
@@ -315,11 +300,13 @@ fn draw_gain_reduction(
     canvas: &mut Canvas,
     analyzer_data: &AnalyzerData,
     nyquist_hz: f32,
+    palette:&crate::palette::Palette,
 ) {
     let bounds = plot_bounds(cx.bounds(),cx.scale_factor());
 
     // As with the above, anti aliasing only causes issues
-    let paint = vg::Paint::color(GR_BAR_OVERLAY_COLOR).with_anti_alias(false);
+    let mut color=palette.color(2);color.a=0.35;
+    let paint=vg::Paint::color(color).with_anti_alias(false);
 
     let bin_frequency = |bin_idx: f32| (bin_idx / analyzer_data.num_bins as f32) * nyquist_hz;
 

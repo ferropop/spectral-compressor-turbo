@@ -5345,7 +5345,7 @@ dependencies = [
 
 [[package]]
 name = "spectral_compressor"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "atomic_float",
  "crossbeam",
@@ -5354,6 +5354,7 @@ dependencies = [
  "open 3.2.0",
  "realfft",
  "serde",
+ "serde_json",
  "triple_buffer",
 ]
 

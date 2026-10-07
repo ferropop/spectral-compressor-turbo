@@ -28,6 +28,7 @@ use triple_buffer::TripleBuffer;
 
 mod analyzer;
 mod auto_gain;
+mod palette;
 mod response;
 #[cfg(test)]
 pub(crate) mod test_support {
@@ -101,6 +102,7 @@ pub struct SpectralCompressor {
     last_output_gain: f32,
     gain_notify_samples: usize,
     last_auto_enabled: bool,
+    processing_parameters:Vec<ParamPtr>,processing_values:Vec<f32>,
 
     /// The algorithms for the FFT and IFFT operations, for each supported order so we can switch
     /// between them without replanning or allocations. Initialized during `initialize()`.
@@ -125,6 +127,12 @@ struct Plan {
 pub struct SpectralCompressorParams {
     #[id = "auto_gain"]
     pub auto_gain_enabled: BoolParam,
+    #[id = "smart_gain"]
+    pub smart_gain: BoolParam,
+    #[id = "delta"]
+    pub delta: BoolParam,
+    #[persist = "palette"]
+    pub palette: Arc<Mutex<palette::PaletteState>>,
     /// The editor state, saved together with the parameter state so the custom scaling can be
     /// restored.
     #[persist = "editor-state"]
@@ -156,16 +164,16 @@ pub struct SpectralCompressorParams {
 /// Global parameters controlling the output stage and all compressors.
 #[derive(Params)]
 pub struct GlobalParams {
-    /// Makeup gain applied after the IDFT in the STFT process. If automatic makeup gain is enabled,
-    /// then this acts as an offset on top of that. This is stored as linear gain.
+    /// The single output volume stage, after dry/wet mixing or Delta audition.
+    /// Auto gain controls this actual parameter. Stored as linear gain.
     #[id = "output"]
     pub output_gain: FloatParam,
     // TODO: Bring this back, and with values that make more sense
     // /// Try to automatically compensate for gain differences with different input gain, threshold, and ratio values.
     // #[id = "auto_makeup"]
     // auto_makeup_gain: BoolParam,
-    /// How much of the dry signal to mix in with the processed signal. The mixing is done after
-    /// applying the output gain. In other words, the dry signal is not gained in any way.
+    /// How much processed audio to mix with latency-aligned dry audio, before Output Gain.
+    /// Delta auditions the difference between aligned dry and this mixed signal.
     #[id = "dry_wet"]
     pub dry_wet_ratio: FloatParam,
 
@@ -219,6 +227,7 @@ impl Default for SpectralCompressor {
             last_output_gain: 1.0,
             gain_notify_samples: 0,
             last_auto_enabled: false,
+            processing_parameters:Vec::new(),processing_values:Vec::new(),
 
             // This is initialized later since we don't want to do non-trivial computations before
             // the plugin is initialized
@@ -310,6 +319,9 @@ impl SpectralCompressorParams {
         SpectralCompressorParams {
             auto_gain_enabled: BoolParam::new("Auto Gain Compensation", false)
                 .hide_in_generic_ui(),
+            smart_gain: BoolParam::new("Smart Gain Averaging", true).hide_in_generic_ui(),
+            delta: BoolParam::new("Delta", false).hide_in_generic_ui(),
+            palette: Arc::new(Mutex::new(palette::PaletteState::default())),
             response_nodes: std::array::from_fn(|i| response::ResponseNode::new(i, compressor_bank.should_update_response.clone())),
             response_edges: response::ResponseEdges::new(compressor_bank.should_update_response.clone()),
             editor_state: editor::default_state(editor_mode.clone()),
@@ -422,6 +434,10 @@ impl Plugin for SpectralCompressor {
             util::gain_to_db(self.params.global.output_gain.value()));
         self.last_output_gain = self.params.global.output_gain.value();
         self.gain_notify_samples = 0;
+        self.processing_parameters=self.params.param_map().into_iter()
+            .filter(|(id,_,_)|!matches!(id.as_str(),"output"|"auto_gain"|"delta"))
+            .map(|(_,ptr,_)|ptr).collect();
+        self.processing_values=self.processing_parameters.iter().map(|ptr|unsafe{ptr.unmodulated_normalized_value()}).collect();
 
         // Planning with RustFFT is very fast, but it will still allocate we we'll plan all of the
         // FFTs we might need in advance
@@ -469,10 +485,17 @@ impl Plugin for SpectralCompressor {
             self.resize_for_window(window_size);
             context.set_latency_samples(self.stft.latency_samples());
         }
+        let mut changed=false;
+        for (ptr,previous) in self.processing_parameters.iter().zip(self.processing_values.iter_mut()) {
+            let value=unsafe{ptr.unmodulated_normalized_value()};
+            if value!=*previous {*previous=value;changed=true;}
+        }
+        if changed {self.auto_gain.notify_processing_change();}
         let enabled = self.params.auto_gain_enabled.value();
         let output_gain_value = self.params.global.output_gain.value();
         if output_gain_value != self.last_output_gain {
             self.auto_gain.set_gain(util::gain_to_db(output_gain_value));
+            if enabled {self.auto_gain.notify_processing_change();}
         }
         self.auto_gain.capture_input(buffer, self.stft.latency_samples() as usize);
 
@@ -575,7 +598,9 @@ impl Plugin for SpectralCompressor {
             self.stft.latency_samples() as usize,
         );
 
-        self.auto_gain.process_output(buffer, enabled);
+        let count=buffer.samples();let latency=self.stft.latency_samples() as usize;
+        self.auto_gain.process_output(buffer, enabled,self.params.smart_gain.value(),self.params.delta.value(),
+            |i,c|self.dry_wet_mixer.dry_sample(i,c,count,latency));
         self.gain_notify_samples += buffer.samples();
         let notify = self.gain_notify_samples >= (self.buffer_config.sample_rate / 30.0) as usize
             || (self.last_auto_enabled && !enabled);
