@@ -1,7 +1,7 @@
 # Spectral Compressor Turbo
 
-An FFT compressor by **Robbert van der Helm & ferropop**, with a dark interface
-and interactive processing response shaper. GUI credit: **by ＦＥＲＲＯ** ·
+An FFT compressor by **Robbert van der Helm & modified by ferropop**, with a dark interface
+and interactive processing response shaper, among many other QOL improvements.
 [www.instagram.com/ferropop](https://www.instagram.com/ferropop).
 
 [Download Mac and Windows VST3/CLAP builds](https://github.com/ferropop/spectral-compressor-turbo/releases)
@@ -19,6 +19,9 @@ Mac bundles are ad-hoc signed, without Apple notarization. The standalone app
 opens an editor preview using the dummy audio backend; the plugin is the DAW effect.
 Turbo has a separate plugin ID and coexists with the original and Custom editions.
 Existing sessions do not automatically replace older plugin instances.
+
+MAC USERS : you may have to run the following command from Terminal:
+sudo xattr -cr /Library/Audio/Plug-Ins/VST3/Spectral\ Compressor\ Turbo.vst3 
 
 ## Controls
 
