@@ -3,7 +3,7 @@
 use nih_plug::prelude::Param;
 use vizia::prelude::*;
 
-use super::param_base::ParamWidgetBase;
+use super::{param_base::ParamWidgetBase, util::ModifiersExt};
 
 /// A toggleable button that integrates with NIH-plug's [`Param`] types. Only makes sense with
 /// [`BoolParam`][nih_plug::prelude::BoolParam]s. Clicking on the button will toggle between the
@@ -90,14 +90,14 @@ impl View for ParamButton {
             WindowEvent::MouseDown(MouseButton::Left)
             | WindowEvent::MouseDoubleClick(MouseButton::Left)
             | WindowEvent::MouseTripleClick(MouseButton::Left) => {
-                if cx.modifiers().contains(Modifiers::CTRL) {
+                if cx.modifiers().command() {
                     self.param_base.begin_set_parameter(cx);
                     self.param_base.set_normalized_value(cx,self.param_base.default_normalized_value());
                     self.param_base.end_set_parameter(cx);
                 } else { self.toggle_value(cx); }
                 meta.consume();
             }
-            WindowEvent::MouseDown(MouseButton::Right) if cx.modifiers().contains(Modifiers::CTRL) => {
+            WindowEvent::MouseDown(MouseButton::Right) if cx.modifiers().command() => {
                 self.param_base.begin_set_parameter(cx);
                 self.param_base.set_normalized_value(cx,self.param_base.default_normalized_value());
                 self.param_base.end_set_parameter(cx);

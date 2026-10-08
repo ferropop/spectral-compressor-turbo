@@ -1,4 +1,19 @@
-# Turbo 1.1.0 verification
+# Turbo 1.1.1 verification
+
+Reset uses Command-click on macOS and Ctrl-click on Windows, consistently across
+numeric sliders, parameter toggles, and response-graph handles. Regression checks
+use the native platform modifier; the opposite modifier remains an ordinary
+click. Toggle checks start from the opposite of each default, including defaults
+that are enabled. No processing code changed in this patch.
+
+Both platform builds run the plugin/editor tests and framework resize checks.
+The exact delivered universal Mac VST3 is checked locally with full pluginval
+and sample-exact audio comparison against 1.1.0. Detailed results are included
+in the delivery's Validation folder. Hosted CI uses headless pluginval; native
+modifier-click/DAW shortcut routing and Windows physical GUI acceptance are not
+claimed. No REAPER is used. Mac bundles are ad-hoc signed, without notarization.
+
+## Previous 1.1.0 feature verification
 
 35 plugin/editor tests passed, including production relative sliders, Ctrl-click
 reset, edge-node release/regrab at multiple scales, palette save/recall/delete,

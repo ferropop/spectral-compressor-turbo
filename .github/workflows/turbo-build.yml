@@ -32,7 +32,7 @@ jobs:
           mkdir -p validation
           set -o pipefail
           cargo test -p spectral_compressor --lib --locked 2>&1 | tee validation/rust-tests.txt
-          cargo test -p nih_plug_vizia --lib resize_handle --locked 2>&1 | tee validation/resize-tests.txt
+          cargo test -p nih_plug_vizia --lib --locked 2>&1 | tee validation/resize-tests.txt
       - name: Build universal Mac
         if: runner.os == 'macOS'
         shell: bash

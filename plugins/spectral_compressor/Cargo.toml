@@ -1,6 +1,6 @@
 [package]
 name = "spectral_compressor"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 authors = ["Robbert van der Helm <mail@robbertvanderhelm.nl>", "ferropop"]
 license = "GPL-3.0-or-later"

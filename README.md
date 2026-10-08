@@ -27,7 +27,7 @@ sudo xattr -cr /Library/Audio/Plug-Ins/VST3/Spectral\ Compressor\ Turbo.vst3
 
 - Every slider uses relative dragging. Clicking alone does not change its value.
   Shift-drag makes fine adjustments; Alt/Option-click opens numeric entry.
-- Ctrl-click resets a parameter to its default.
+- Command-click on macOS / Ctrl-click on Windows resets a parameter to its default.
 - Auto Gain Compensation sets the actual Output Gain. Smart averaging is on by
   default: K-weighted 3-second input/output energy averages, gentle steady
   tracking, and a brief fast relearn after processing edits. It reduces recurring

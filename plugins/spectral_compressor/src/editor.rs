@@ -269,6 +269,14 @@ fn analyzer_column(cx: &mut Context) {
 #[cfg(test)]
 mod interaction_tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    const RESET_MODIFIER: Modifiers = Modifiers::LOGO;
+    #[cfg(not(target_os = "macos"))]
+    const RESET_MODIFIER: Modifiers = Modifiers::CTRL;
+    #[cfg(target_os = "macos")]
+    const OTHER_MODIFIER: Modifiers = Modifiers::CTRL;
+    #[cfg(not(target_os = "macos"))]
+    const OTHER_MODIFIER: Modifiers = Modifiers::LOGO;
     use nih_plug_vizia::vizia::context::backend::BackendContext;
     use nih_plug_vizia::widgets::RawParamEvent;
 
@@ -354,12 +362,12 @@ mod interaction_tests {
     }
 
     #[test]
-    fn ctrl_click_resets_every_toggle_to_its_default() {
+    fn platform_reset_click_resets_every_toggle_to_its_default() {
         let plugin=SpectralCompressor::default();
         for (_,ptr,_) in plugin.params.param_map() {
             let ParamPtr::BoolParam(p)=ptr else {continue;};
             for button in [MouseButton::Left,MouseButton::Right] {
-                crate::test_support::set_raw(ptr,1.0);
+                crate::test_support::set_raw(ptr,1.0-unsafe {ptr.default_normalized_value()});
                 let mut cx=Context::default();
                 Data {params:plugin.params.clone(),editor_mode:plugin.params.editor_mode.clone(),analyzer_data:plugin.analyzer_output_data.clone(),sample_rate:plugin.sample_rate.clone()}.build(&mut cx);
                 struct Apply;
@@ -370,7 +378,7 @@ mod interaction_tests {
                 }
                 Apply.build(&mut cx);
                 let e=ParamButton::new(&mut cx,Data::params,move |_|unsafe {&*p}).entity();
-                let mut backend=BackendContext::new_with_event_manager(&mut cx);*backend.modifiers()=Modifiers::CTRL;
+                let mut backend=BackendContext::new_with_event_manager(&mut cx);*backend.modifiers()=RESET_MODIFIER;
                 backend.send_event(Event::new(WindowEvent::MouseDown(button)).target(e).origin(e).propagate(Propagation::Direct));backend.process_events();
                 assert_eq!(unsafe {ptr.unmodulated_normalized_value()},unsafe {ptr.default_normalized_value()});
             }
@@ -378,7 +386,7 @@ mod interaction_tests {
     }
 
     #[test]
-    fn ctrl_click_resets_every_numeric_parameter_without_starting_a_drag() {
+    fn platform_reset_click_resets_every_numeric_parameter_without_starting_a_drag() {
         for button in [MouseButton::Left,MouseButton::Right] {
             let plugin=SpectralCompressor::default();
             for (_,ptr,_) in plugin.params.param_map() {
@@ -396,7 +404,7 @@ mod interaction_tests {
                 Apply.build(&mut cx);relative_widget(&mut cx,Data::params,ptr);
                 let mut sliders=Vec::new();inspect(&mut EventContext::new_with_current(&mut cx,Entity::root()),&mut sliders);
                 let e=sliders[0].0;let mut backend=BackendContext::new_with_event_manager(&mut cx);
-                *backend.modifiers()=Modifiers::CTRL;
+                *backend.modifiers()=RESET_MODIFIER;
                 backend.send_event(Event::new(WindowEvent::MouseDown(button)).target(e).origin(e).propagate(Propagation::Direct));backend.process_events();
                 let actual=unsafe {ptr.unmodulated_normalized_value()};assert!((actual-default).abs()<1e-4,"{} did not reset",unsafe {ptr.name()});
                 backend.send_event(Event::new(WindowEvent::MouseMove(90.0,30.0)).target(e).origin(e).propagate(Propagation::Direct));backend.process_events();
@@ -455,7 +463,7 @@ mod interaction_tests {
                 }
                 send(&mut backend, WindowEvent::MouseDown(MouseButton::Right));
                 send(&mut backend, WindowEvent::MouseUp(MouseButton::Right));
-                *backend.modifiers() = Modifiers::LOGO;
+                *backend.modifiers() = OTHER_MODIFIER;
                 send(&mut backend, WindowEvent::MouseDown(MouseButton::Left));
                 send(&mut backend, WindowEvent::MouseUp(MouseButton::Left));
                 *backend.modifiers() = Modifiers::empty();

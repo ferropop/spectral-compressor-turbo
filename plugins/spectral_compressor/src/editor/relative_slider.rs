@@ -426,7 +426,7 @@ impl View for RelativeParamSlider {
             WindowEvent::MouseDown(MouseButton::Left)
             | WindowEvent::MouseDoubleClick(MouseButton::Left)
             | WindowEvent::MouseTripleClick(MouseButton::Left) => {
-                if cx.modifiers().contains(Modifiers::CTRL) {
+                if cx.modifiers().command() {
                     self.drag_active = false;
                     self.relative_drag = None;
                     self.param_base.begin_set_parameter(cx);
@@ -456,7 +456,7 @@ impl View for RelativeParamSlider {
             WindowEvent::MouseDown(MouseButton::Right)
             | WindowEvent::MouseDoubleClick(MouseButton::Right)
             | WindowEvent::MouseTripleClick(MouseButton::Right) => {
-                if cx.modifiers().contains(Modifiers::CTRL) {
+                if cx.modifiers().command() {
                     self.param_base.begin_set_parameter(cx);
                     self.param_base.set_normalized_value(cx, self.param_base.default_normalized_value());
                     self.param_base.end_set_parameter(cx);

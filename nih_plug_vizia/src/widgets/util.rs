@@ -79,3 +79,24 @@ pub fn remap_current_entity_y_coordinate(cx: &EventContext, y_coord: f32) -> f32
     let height = cx.cache.get_height(cx.current()) - (border_width * 2.0);
     ((y_coord - y_pos) / height).clamp(0.0, 1.0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_modifier_matches_the_platform_reset_shortcut() {
+        assert!(!Modifiers::empty().command());
+        #[cfg(target_os = "macos")]
+        {
+            assert!(Modifiers::LOGO.command());
+            assert!(!Modifiers::CTRL.command());
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert!(Modifiers::CTRL.command());
+            assert!(!Modifiers::LOGO.command());
+        }
+        assert!((Modifiers::CTRL | Modifiers::LOGO | Modifiers::SHIFT).command());
+    }
+}

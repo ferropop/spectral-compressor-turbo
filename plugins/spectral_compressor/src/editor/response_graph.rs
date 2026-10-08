@@ -2,7 +2,7 @@ use super::{analyzer::Analyzer,relative_slider::RelativeParamSlider,Data};
 use crate::response::{self,HPF,LPF,NODE_COUNT};
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::{prelude::*,vg};
-use nih_plug_vizia::widgets::{RawParamEvent,ParamButton,ParamButtonExt};
+use nih_plug_vizia::widgets::{util::ModifiersExt,RawParamEvent,ParamButton,ParamButtonExt};
 const LN_MIN:f32=3.4011974;
 const LN_MAX:f32=9.998797;
 const LN_RANGE:f32=LN_MAX-LN_MIN;
@@ -94,7 +94,7 @@ impl Analyzer {
                 // Test handles first: edge handles remain clickable across their full hit circle.
                 let hit=self.hit(x,y,b,cx.scale_factor());
                 if hit.is_none() && (x<b.x||x>b.x+b.w||y<b.y||y>b.y+b.h) {return;}
-                if cx.modifiers().contains(Modifiers::CTRL) {
+                if cx.modifiers().command() {
                     if let Some(i)=hit {
                         self.selected=i;
                         let p=if i<NODE_COUNT {&self.params.response_nodes[i].amount} else {self.frequency(i)};
@@ -178,6 +178,10 @@ impl Analyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    const RESET_MODIFIER: Modifiers = Modifiers::LOGO;
+    #[cfg(not(target_os = "macos"))]
+    const RESET_MODIFIER: Modifiers = Modifiers::CTRL;
     use crate::SpectralCompressor;
     use nih_plug_vizia::vizia::context::backend::BackendContext;
     use std::sync::{Arc,Mutex};
@@ -281,7 +285,7 @@ mod tests {
         assert_eq!(p.params.response_edges.high_pass.value(),30.0);assert_eq!(p.params.response_edges.low_pass.value(),22000.0);
     }
     #[test]
-    fn permanent_filter_handles_drag_only_horizontally_and_ctrl_reset_to_extremes() {
+    fn permanent_filter_handles_drag_only_horizontally_and_platform_reset_to_extremes() {
         let(p,mut cx,e,_)=fixture();let mut backend=BackendContext::new_with_event_manager(&mut cx);geometry(&mut backend,e);
         for (start,end,hpf) in [(30.0,300.0,true),(22000.0,6000.0,false)] {
             let(x,y)=point(start,0.0);move_to(&mut backend,e,x,y);send(&mut backend,e,WindowEvent::MouseDown(MouseButton::Left));
@@ -290,7 +294,7 @@ mod tests {
             let(x,y)=point(end,12.0);move_to(&mut backend,e,x,y);send(&mut backend,e,WindowEvent::MouseUp(MouseButton::Left));
             let param=if hpf {&p.params.response_edges.high_pass}else{&p.params.response_edges.low_pass};assert!(((param.value().ln()-end.ln())/LN_RANGE*584.0).abs()<1.0,"filter {hpf} actual {} expected {end}",param.value());
             assert!(p.params.response_nodes.iter().all(|n|!n.enabled.value()));
-            *backend.modifiers()=Modifiers::CTRL;let(x,y)=point(end,0.0);move_to(&mut backend,e,x,y);send(&mut backend,e,WindowEvent::MouseDown(MouseButton::Right));
+            *backend.modifiers()=RESET_MODIFIER;let(x,y)=point(end,0.0);move_to(&mut backend,e,x,y);send(&mut backend,e,WindowEvent::MouseDown(MouseButton::Right));
             assert!((param.value()-start).abs()<0.1);*backend.modifiers()=Modifiers::empty();
         }
     }
